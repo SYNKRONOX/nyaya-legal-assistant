@@ -1,158 +1,133 @@
+import os
 import faiss
 import pickle
-import os
 from sentence_transformers import SentenceTransformer
+from .download_util import download_volume_files
 
 class LegalRetriever:
-    """
-    Retriever for legal documents using FAISS vector search.
-    Now with IPC/BNS code filtering to prevent section confusion!
-    """
-    
     def __init__(self):
-        # Load FAISS index and metadata
-        index_path = os.getenv("FAISS_INDEX_PATH", "/Volumes/workspace_7474652263326815/default/nyaya_volumes/legal_index.faiss")
-        metadata_path = os.getenv("FAISS_METADATA_PATH", "/Volumes/workspace_7474652263326815/default/nyaya_volumes/legal_metadata.pkl")
+        print("🔍 Initializing Legal Retriever...")
+        
+        # Download files from volume at startup
+        try:
+            data_dir = download_volume_files()
+            index_path = os.path.join(data_dir, "legal_index.faiss")
+            metadata_path = os.path.join(data_dir, "legal_metadata.pkl")
+        except Exception as e:
+            print(f"❌ Failed to download files from volume: {e}")
+            print("   Falling back to local paths (for development)")
+            # Fallback for local development
+            source_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            data_dir = os.path.join(source_root, "data")
+            index_path = os.path.join(data_dir, "legal_index.faiss")
+            metadata_path = os.path.join(data_dir, "legal_metadata.pkl")
+        
+        print(f"📂 Loading FAISS index from: {index_path}")
+        print(f"📂 Loading metadata from: {metadata_path}")
+        
+        # Check if files exist
+        if not os.path.exists(index_path):
+            raise FileNotFoundError(f"FAISS index not found at: {index_path}")
+        if not os.path.exists(metadata_path):
+            raise FileNotFoundError(f"Metadata not found at: {metadata_path}")
         
         try:
+            # Load FAISS index
             self.index = faiss.read_index(index_path)
+            print(f"✅ Loaded FAISS index with {self.index.ntotal} vectors")
+            
+            # Load metadata (dict with keys: texts, sources, ids)
             with open(metadata_path, 'rb') as f:
-                self.metadata = pickle.load(f)
+                metadata_dict = pickle.load(f)
             
-            # Initialize embedding model (same as used for indexing)
+            # Extract lists
+            self.texts = metadata_dict.get('texts', [])
+            self.sources = metadata_dict.get('sources', [])
+            self.ids = metadata_dict.get('ids', [])
+            
+            print(f"✅ Loaded {len(self.texts)} text records")
+            print(f"✅ Loaded {len(self.sources)} source records")
+            
+            # Load embedding model
             self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+            print("✅ Loaded embedding model")
             
-            print(f"✓ FAISS index loaded: {self.index.ntotal} documents")
-            print(f"✓ Embedding model loaded: {self.embedding_model.get_sentence_embedding_dimension()}d")
-            
-        except FileNotFoundError as e:
-            print(f"❌ FAISS index not found at {index_path}")
-            print("Please run notebooks/02_build_faiss_index.py first!")
-            raise
         except Exception as e:
-            print(f"❌ Error loading FAISS index: {str(e)}")
+            print(f"❌ Error loading FAISS index: {e}")
             raise
     
-    def _filter_by_code(self, results: list, code_filter: str) -> list:
-        """
-        Filter results by legal code (IPC or BNS).
+    def _detect_code_from_text(self, text):
+        """Detect if text is about IPC or BNS based on content"""
+        text_lower = text.lower()
         
-        Args:
-            results: List of retrieved documents
-            code_filter: 'IPC', 'BNS', or 'BOTH'
-            
-        Returns:
-            Filtered list of documents
-        """
+        # Check for explicit mentions
+        if 'ipc' in text_lower or 'indian penal code' in text_lower:
+            return 'IPC'
+        if 'bns' in text_lower or 'bharatiya nyaya sanhita' in text_lower:
+            return 'BNS'
+        
+        # Check for section patterns
+        if 'section' in text_lower:
+            # Could be either, return as general legal
+            return 'GENERAL'
+        
+        return 'GENERAL'
+    
+    def _filter_by_code(self, results, code_filter):
+        """Filter search results by legal code (IPC/BNS/BOTH)"""
         if code_filter == 'BOTH':
             return results
         
         filtered = []
         for doc in results:
-            # Extract code from source_ref (e.g., "IPC Section 302" or "BNS Section 103")
-            source = doc.get('source', '')
             text = doc.get('text', '')
+            doc_code = self._detect_code_from_text(text)
             
-            # Check if document matches the requested code
-            if code_filter == 'IPC':
-                if 'IPC' in source or 'IPC Section' in text[:50]:
-                    filtered.append(doc)
-            elif code_filter == 'BNS':
-                if 'BNS' in source or 'BNS Section' in text[:50] or 'Bharatiya Nyaya Sanhita' in text[:100]:
-                    filtered.append(doc)
+            # If looking for specific code, match it or accept GENERAL
+            if code_filter == doc_code or doc_code == 'GENERAL':
+                filtered.append(doc)
         
-        return filtered if filtered else results  # Return all if no matches (fallback)
+        return filtered
     
-    def hybrid_search(self, query: str, top_k: int = 5, code_filter: str = 'BNS') -> list:
+    def hybrid_search(self, query, k=5, code_filter='BOTH'):
         """
-        Semantic search with IPC/BNS code filtering.
+        Perform hybrid search with optional code filtering
         
         Args:
-            query: The search query
-            top_k: Number of results to return
-            code_filter: 'IPC', 'BNS', or 'BOTH' (default: BNS)
-            
-        Returns:
-            List of top-k relevant documents with metadata
+            query: Search query
+            k: Number of results to return
+            code_filter: 'IPC', 'BNS', or 'BOTH'
         """
-        # Input validation
-        if not query or not query.strip():
-            print("⚠️  Empty query provided")
-            return []
-        
-        if top_k <= 0:
-            print("⚠️  Invalid top_k value, using default: 5")
-            top_k = 5
-        
         try:
-            # Generate embedding for query
-            query_embedding = self.embedding_model.encode([query])[0].reshape(1, -1)
+            # Embed query
+            query_vector = self.embedding_model.encode([query])
             
-            # Retrieve more results than needed for filtering
-            search_k = top_k * 3  # Get 3x results to filter from
-            distances, indices = self.index.search(query_embedding, min(search_k, self.index.ntotal))
+            # Search FAISS (get more results for filtering)
+            search_k = min(k * 3, len(self.texts))
+            distances, indices = self.index.search(query_vector, search_k)
             
-            # Build result list with metadata
+            # Gather results
             results = []
-            for distance, idx in zip(distances[0], indices[0]):
-                if idx == -1:  # FAISS returns -1 for invalid indices
-                    continue
-                
-                # Extract metadata
-                text = self.metadata['texts'][idx] if idx < len(self.metadata['texts']) else ""
-                source = self.metadata['sources'][idx] if idx < len(self.metadata['sources']) else ""
-                doc_id = self.metadata['ids'][idx] if idx < len(self.metadata['ids']) else ""
-                
-                # Parse code and section from source or text
-                code = 'UNKNOWN'
-                section = 'N/A'
-                if 'IPC Section' in text[:100]:
-                    code = 'IPC'
-                    import re
-                    match = re.search(r'IPC Section (\d+[A-Z]?)', text[:100])
-                    if match:
-                        section = match.group(1)
-                elif 'BNS Section' in text[:100] or 'Bharatiya Nyaya Sanhita' in text[:100]:
-                    code = 'BNS'
-                    import re
-                    match = re.search(r'BNS Section (\d+[A-Z]?)|Section (\d+[A-Z]?)', text[:100])
-                    if match:
-                        section = match.group(1) or match.group(2)
-                
-                results.append({
-                    'text': text,
-                    'source': source,
-                    'id': doc_id,
-                    'code': code,
-                    'section': section,
-                    'score': float(distance)
-                })
+            for idx in indices[0]:
+                if idx >= 0 and idx < len(self.texts):
+                    # Build document dict from parallel lists
+                    doc = {
+                        'text': self.texts[idx],
+                        'source': self.sources[idx] if idx < len(self.sources) else 'Unknown',
+                        'id': self.ids[idx] if idx < len(self.ids) else str(idx),
+                        'index': idx
+                    }
+                    results.append(doc)
             
-            # Apply code filtering
-            filtered_results = self._filter_by_code(results, code_filter)
+            # Filter by code if needed
+            if code_filter != 'BOTH':
+                results = self._filter_by_code(results, code_filter)
             
-            # Return top-k after filtering
-            final_results = filtered_results[:top_k]
-            
-            print(f"✓ Retrieved {len(final_results)} documents (filter: {code_filter})")
-            return final_results
+            # Return top k
+            return results[:k]
             
         except Exception as e:
-            print(f"❌ Error during search: {str(e)}")
+            print(f"❌ Error in hybrid_search: {e}")
+            import traceback
+            traceback.print_exc()
             return []
-
-# Future migration path to Databricks Vector Search (managed service)
-# 
-# When ready to scale to production:
-# 1. Create Vector Search endpoint: 
-#    databricks vector-search create-endpoint --name legal-search
-# 2. Create index from Unity Catalog table:
-#    databricks vector-search create-index \
-#      --name legal_vector_index \
-#      --source-table workspace_7474652263326815.default.nyaya_unified_corpus \
-#      --primary-key id \
-#      --embedding-column text
-# 3. Replace LegalRetriever with VectorSearchRetriever:
-#    from databricks.vector_search.client import VectorSearchClient
-#    client = VectorSearchClient()
-#    results = client.search(index_name="legal_vector_index", query=query, num_results=5)

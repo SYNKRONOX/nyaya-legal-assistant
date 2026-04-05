@@ -117,7 +117,7 @@ class LegalMultiAgent:
             # Step 3: Retrieve context documents with code filtering
             context_docs = self.retriever.hybrid_search(
                 query, 
-                top_k=5,
+                k=5,
                 code_filter=detected_code
             )
             
@@ -137,9 +137,9 @@ class LegalMultiAgent:
                     "error": ""
                 }
             
-            # Step 4: Build context string with CLEAR code labels
+            # Step 4: Build context string from actual document structure
             context_str = "\n\n".join([
-                f"[{doc.get('code', 'UNKNOWN')} Section {doc.get('section', 'N/A')}] {doc.get('text', '')[:500]}" 
+                f"[Document {i+1}] {doc.get('text', '')[:500]}" 
                 for i, doc in enumerate(context_docs)
             ])
             

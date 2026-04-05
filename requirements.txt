@@ -22,3 +22,6 @@ datasets==2.16.0
 
 # Note: databricks-sql-connector removed (not needed for FAISS approach)
 # Future: Add databricks-vectorsearch when migrating to Vector Search
+
+# Databricks SDK for file access
+databricks-sdk>=0.20.0

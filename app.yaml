@@ -1,14 +1,14 @@
 command: [ "python", "app/main.py" ]
 
-# Mount Unity Catalog volume for FAISS index access
-volumes:
-  - name: nyaya-data
-    volume:
-      path: /Volumes/workspace_7474652263326815/default/nyaya_volumes
-
 env:
+  # Reference the volume resource added in the UI
+  # The 'volume' key is the default resource key from the UI
+  - name: "VOLUME_PATH"
+    valueFrom: volume
+  
+  # FAISS paths will be constructed from VOLUME_PATH at runtime
+  # But for now, keep these as fallback (will update code to use VOLUME_PATH)
   - name: "FAISS_INDEX_PATH"
     value: "/Volumes/workspace_7474652263326815/default/nyaya_volumes/legal_index.faiss"
   - name: "FAISS_METADATA_PATH"
     value: "/Volumes/workspace_7474652263326815/default/nyaya_volumes/legal_metadata.pkl"
-  # Removed SARVAM_API_KEY - no longer using external translation API
