@@ -1,0 +1,10 @@
+gradio==4.44.0
+huggingface-hub==0.20.3
+langgraph>=0.1.1
+langchain-databricks==0.1.0
+sentence-transformers==2.2.2
+faiss-cpu==1.8.0
+numpy==1.24.3
+pandas
+datasets==2.16.0
+databricks-sql-connector

@@ -1,0 +1,6 @@
+command: [ "python", "app/main.py" ]
+env:
+  - name: "FAISS_INDEX_PATH"
+    value: "/Volumes/workspace_7474652263326815/default/nyaya_volumes/legal_index.faiss"
+  - name: "FAISS_METADATA_PATH"
+    value: "/Volumes/workspace_7474652263326815/default/nyaya_volumes/legal_metadata.pkl"
