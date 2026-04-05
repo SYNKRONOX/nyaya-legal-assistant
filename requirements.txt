@@ -1,10 +1,24 @@
+# Web UI
 gradio==4.44.0
-huggingface-hub==0.20.3
+
+# LangGraph and LangChain
 langgraph>=0.1.1
 langchain-databricks==0.1.0
+
+# Embeddings and Vector Search
 sentence-transformers==2.2.2
 faiss-cpu==1.8.0
+
+# ML & Monitoring
+mlflow>=2.9.0
+
+# Data Processing
 numpy==1.24.3
 pandas
+
+# Hugging Face (for dataset loading in notebooks)
+huggingface-hub==0.20.3
 datasets==2.16.0
-databricks-sql-connector
+
+# Note: databricks-sql-connector removed (not needed for FAISS approach)
+# Future: Add databricks-vectorsearch when migrating to Vector Search
