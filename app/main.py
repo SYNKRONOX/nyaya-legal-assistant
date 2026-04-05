@@ -54,7 +54,7 @@ def chat(message, history, language):
 # Create Gradio interface
 demo = gr.ChatInterface(
     fn=chat,
-    title="⚖️ Nyaya Legal Assistant",
+    title="vakeel saab Legal Assistant",
     description='''Ask legal questions about Indian law. Get answers citing:
     • **BNS (Bharatiya Nyaya Sanhita 2023)** - Current law
     • **IPC (Indian Penal Code 1860)** - Historical reference (repealed July 1, 2024)
