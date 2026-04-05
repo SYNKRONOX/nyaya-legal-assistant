@@ -24,13 +24,29 @@ except Exception as e:
 
 print("=" * 80)
 
-def chat(message, history):
-    """Handle chat interactions"""
+# Language options
+LANGUAGES = {
+    "English": "English",
+    "हिंदी (Hindi)": "Hindi",
+    "தமிழ் (Tamil)": "Tamil",
+    "తెలుగు (Telugu)": "Telugu",
+    "ಕನ್ನಡ (Kannada)": "Kannada",
+    "മലയാളം (Malayalam)": "Malayalam",
+    "मराठी (Marathi)": "Marathi",
+    "বাংলা (Bengali)": "Bengali",
+    "ગુજરાતી (Gujarati)": "Gujarati",
+    "ਪੰਜਾਬੀ (Punjabi)": "Punjabi",
+    "اردو (Urdu)": "Urdu"
+}
+
+def chat(message, history, language):
+    """Handle chat interactions with language selection"""
     if agent is None:
         return "❌ Agent failed to initialize. Please check the logs for details."
     
     try:
-        response = agent.ask(message)
+        target_lang = LANGUAGES.get(language, "English")
+        response = agent.ask(message, target_language=target_lang)
         return response
     except Exception as e:
         return f"❌ Error processing query: {str(e)}"
@@ -44,11 +60,12 @@ demo = gr.ChatInterface(
     • **IPC (Indian Penal Code 1860)** - Historical reference (repealed July 1, 2024)
     
     The assistant automatically detects your intent and provides appropriate legal references.''',
-    examples=[
-        "What is the punishment for murder in India?",
-        "What was IPC Section 302?",
-        "Compare IPC 302 and BNS 103",
-        "Explain theft laws in India"
+    additional_inputs=[
+        gr.Dropdown(
+            choices=list(LANGUAGES.keys()),
+            value="English",
+            label="🌐 Response Language"
+        )
     ],
     theme="soft"
 )
